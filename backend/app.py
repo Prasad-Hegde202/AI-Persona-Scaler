@@ -286,6 +286,84 @@ Question:
             }
         ), 500
 
+@app.route("/voice-chat", methods=["POST"])
+def voice_chat():
+
+    try:
+
+        data = request.get_json()
+
+        question = data.get(
+            "question",
+            ""
+        ).strip()
+
+        if not question:
+
+            return jsonify({
+                "answer":
+                "Please provide a question."
+            })
+
+        # Retrieve documents
+
+        results = vector_store.similarity_search_with_relevance_scores(
+            question,
+            k=8
+        )
+
+        filtered_docs = []
+
+        for doc, score in results:
+
+            if score >= 0.4:
+                filtered_docs.append(doc)
+
+        context = "\n\n".join(
+            [
+                doc.page_content
+                for doc in filtered_docs
+            ]
+        )
+
+        prompt = f"""
+You are Prasad Hegde's AI representative.
+
+Rules:
+
+1. Answer only using the provided context.
+
+2. Keep answers conversational and concise because they will be spoken aloud on a phone call.
+
+3. Never make up information.
+
+4. If information is unavailable, say:
+
+'I don't have enough information to answer that.'
+
+Context:
+{context}
+
+Question:
+{question}
+"""
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt
+        )
+
+        return jsonify({
+            "answer": response.text
+        })
+
+    except Exception:
+
+        return jsonify({
+            "answer":
+            "I'm currently unable to access my knowledge base. Please try again in a few moments."
+        })
+        
 # =====================================
 # Run Server
 # =====================================
