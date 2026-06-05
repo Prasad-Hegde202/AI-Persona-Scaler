@@ -26,6 +26,14 @@ client = genai.Client(
 )
 
 # =====================================
+# Calendar Link
+# =====================================
+
+CALENDAR_LINK = (
+    "https://cal.com/prasad-hegde-juxhoa/scaler-ai-interview"
+)
+
+# =====================================
 # Embedding Model
 # =====================================
 
@@ -81,12 +89,57 @@ def chat():
             ""
         ).strip()
 
+        # =====================================
+        # Empty Question Check
+        # =====================================
+
         if not question:
 
             return jsonify(
                 {
                     "answer": "Please enter a question.",
                     "sources": []
+                }
+            )
+
+        question_lower = question.lower()
+
+        # =====================================
+        # Booking Keywords
+        # =====================================
+
+        booking_keywords = [
+            "schedule",
+            "interview",
+            "meeting",
+            "book",
+            "availability"
+        ]
+
+        # =====================================
+        # Booking Intent Detection
+        # =====================================
+
+        if any(
+            keyword in question_lower
+            for keyword in booking_keywords
+        ):
+
+            return jsonify(
+                {
+                    "answer": f"""Absolutely.
+
+You can schedule an interview using my live calendar:
+
+{CALENDAR_LINK}
+
+My availability is synced with my real calendar.""",
+                    "sources": [
+                        {
+                            "repo": "cal.com",
+                            "type": "calendar"
+                        }
+                    ]
                 }
             )
 

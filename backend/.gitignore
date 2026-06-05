@@ -13,7 +13,7 @@ __pycache__/
 *.pyd
 
 # ChromaDB vector store
-chroma_db/
+# chroma_db/
 
 # Logs
 *.log
