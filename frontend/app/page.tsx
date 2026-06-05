@@ -100,7 +100,10 @@ export default function Home() {
     setQuestion("");
     setLoading(true);
     try {
-      const { data } = await axios.post("http://localhost:5000/chat", { question: content });
+     const { data } = await axios.post(
+  `${process.env.NEXT_PUBLIC_API_URL}/chat`,
+  { question: content }
+);
       setMessages((prev) => [...prev, {
         role: "assistant",
         text: normalizeAnswer(data.answer ?? data.response ?? data.result ?? data),
