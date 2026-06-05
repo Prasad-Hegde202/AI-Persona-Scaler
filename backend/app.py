@@ -9,6 +9,15 @@ from langchain_chroma import Chroma
 
 from google import genai
 
+import requests
+
+from datetime import (
+    datetime,
+    timedelta,
+    timezone
+)
+
+
 # =====================================
 # Load Environment Variables
 # =====================================
@@ -16,6 +25,12 @@ from google import genai
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+CAL_API_KEY = os.getenv("CAL_API_KEY")
+
+CAL_EVENT_TYPE_ID = int(
+    os.getenv("CAL_EVENT_TYPE_ID", "5914537")
+)
 
 # =====================================
 # Gemini Client
@@ -276,17 +291,186 @@ Question:
             }
         )
 
+    # ✅ FIX 1: except now correctly aligned with try
     except Exception as e:
 
         print("ERROR:", str(e))
 
         return jsonify(
             {
-                "error": str(e)
+                "answer":
+                "I'm currently unable to access my knowledge base. Please try again in a few moments.",
+                "sources": []
             }
         ), 500
 
-@app.route("/voice-chat", methods=["POST"])
+@app.route(
+    "/check-availability",
+    methods=["GET"]
+)
+def check_availability():
+
+    try:
+
+        headers = {
+            "Authorization":
+            f"Bearer {CAL_API_KEY}"
+        }
+
+        start_time = datetime.utcnow().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0
+        )
+
+        end_time = (
+            start_time +
+            timedelta(days=7)
+        ).replace(
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=0
+        )
+
+        url = (
+            "https://api.cal.com/v2/slots/available"
+            f"?eventTypeId={CAL_EVENT_TYPE_ID}"
+            f"&startTime={start_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')}"
+            f"&endTime={end_time.strftime('%Y-%m-%dT%H:%M:%S.000Z')}"
+        )
+
+        response = requests.get(
+            url,
+            headers=headers,
+            timeout=15
+        )
+
+        print("\n========== CAL DEBUG ==========")
+        print("URL:", url)
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
+        print("================================\n")
+
+        print("URL:", url)
+
+        data = response.json()
+
+        print("PARSED DATA:", data)
+
+        slots = []
+
+        for day_slots in data.get(
+            "data",
+            {}
+        ).get(
+            "slots",
+            {}
+        ).values():
+
+            for slot in day_slots:
+
+                slots.append(
+                    slot["time"]
+                )
+
+        return jsonify({
+            "available_slots":
+            slots[:10]
+        })
+
+    except Exception as e:
+
+        print(
+            "CALENDAR ERROR:",
+            str(e)
+        )
+
+        return jsonify({
+            "available_slots": []
+        }), 500
+
+@app.route(
+    "/book-interview",
+    methods=["POST"]
+)
+def book_interview():
+
+    try:
+
+        data = request.get_json()
+
+        name = data.get("name")
+        email = data.get("email")
+        slot = data.get("slot")
+
+        headers = {
+            "Authorization":
+            f"Bearer {CAL_API_KEY}",
+            "Content-Type":
+            "application/json"
+        }
+
+        payload = {
+    "eventTypeId": CAL_EVENT_TYPE_ID,
+
+    "start": slot,
+
+    "responses": {
+        "name": name,
+        "email": email,
+        "location": {
+            "value": "integrations:daily",
+            "optionValue": ""
+        }
+    },
+
+    "timeZone": "Asia/Kolkata",
+
+    "language": "en",
+
+    "metadata": {}
+}
+
+        response = requests.post(
+            "https://api.cal.com/v2/bookings",
+            headers=headers,
+            json=payload,
+            timeout=20
+        )
+
+        print(response.status_code)
+        print(response.text)
+        
+
+        booking_data = response.json()
+
+        return jsonify({
+             "success": response.status_code in [200, 201],
+            "booking": booking_data
+        })
+
+        
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
+
+    except Exception as e:
+
+        print(
+            "BOOKING ERROR:",
+            str(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route(
+    "/voice-chat",
+    methods=["POST"]
+)
 def voice_chat():
 
     try:
@@ -305,19 +489,30 @@ def voice_chat():
                 "Please provide a question."
             })
 
-        # Retrieve documents
-
-        results = vector_store.similarity_search_with_relevance_scores(
-            question,
-            k=8
+        results = (
+            vector_store
+            .similarity_search_with_relevance_scores(
+                question,
+                k=8
+            )
         )
 
+        # ✅ FIX 2: filtered_docs correctly indented (removed extra spaces)
         filtered_docs = []
 
         for doc, score in results:
 
             if score >= 0.4:
+
                 filtered_docs.append(doc)
+
+        # ✅ FIX 3 & 4: Only ONE no-context check, duplicate block removed entirely
+        if len(filtered_docs) == 0:
+
+            return jsonify({
+                "answer":
+                "I don't have enough information to answer that."
+            })
 
         context = "\n\n".join(
             [
@@ -331,13 +526,15 @@ You are Prasad Hegde's AI representative.
 
 Rules:
 
-1. Answer only using the provided context.
+1. Answer only from the context.
 
-2. Keep answers conversational and concise because they will be spoken aloud on a phone call.
+2. Keep answers short and conversational.
 
-3. Never make up information.
+3. These answers will be spoken on a phone call.
 
-4. If information is unavailable, say:
+4. Never invent information.
+
+5. If information is unavailable say:
 
 'I don't have enough information to answer that.'
 
@@ -354,16 +551,17 @@ Question:
         )
 
         return jsonify({
-            "answer": response.text
+            "answer":
+            response.text
         })
 
     except Exception:
 
         return jsonify({
             "answer":
-            "I'm currently unable to access my knowledge base. Please try again in a few moments."
+            "I'm currently unable to access my knowledge base. Please try again in a moment."
         })
-        
+
 # =====================================
 # Run Server
 # =====================================
