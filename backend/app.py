@@ -13,9 +13,12 @@ import requests
 
 from datetime import (
     datetime,
-    timedelta,
-    timezone
+    timedelta
 )
+
+from zoneinfo import ZoneInfo
+
+
 
 
 # =====================================
@@ -353,31 +356,36 @@ def check_availability():
         print("RESPONSE:", response.text)
         print("================================\n")
 
-        print("URL:", url)
-
         data = response.json()
 
         print("PARSED DATA:", data)
 
+
         slots = []
 
-        for day_slots in data.get(
-            "data",
-            {}
-        ).get(
-            "slots",
-            {}
-        ).values():
+        for day_slots in data.get("data", {}).get("slots", {}).values():
 
             for slot in day_slots:
 
-                slots.append(
-                    slot["time"]
+                utc_time = datetime.fromisoformat(
+                    slot["time"].replace("Z", "+00:00")
                 )
 
+                ist_time = utc_time.astimezone(
+                    ZoneInfo("Asia/Kolkata")
+                )
+
+                formatted = ist_time.strftime(
+                    "%d %B %Y at %I:%M %p IST"
+                )
+
+                slots.append({
+                    "display": formatted,
+                    "value": slot["time"]
+                })
+
         return jsonify({
-            "available_slots":
-            slots[:10]
+            "available_slots": slots[:10]
         })
 
     except Exception as e:
@@ -390,6 +398,7 @@ def check_availability():
         return jsonify({
             "available_slots": []
         }), 500
+
 
 @app.route(
     "/book-interview",
@@ -413,25 +422,20 @@ def book_interview():
         }
 
         payload = {
-    "eventTypeId": CAL_EVENT_TYPE_ID,
-
-    "start": slot,
-
-    "responses": {
-        "name": name,
-        "email": email,
-        "location": {
-            "value": "integrations:daily",
-            "optionValue": ""
+            "eventTypeId": CAL_EVENT_TYPE_ID,
+            "start": slot,
+            "responses": {
+                "name": name,
+                "email": email,
+                "location": {
+                    "value": "integrations:daily",
+                    "optionValue": ""
+                }
+            },
+            "timeZone": "Asia/Kolkata",
+            "language": "en",
+            "metadata": {}
         }
-    },
-
-    "timeZone": "Asia/Kolkata",
-
-    "language": "en",
-
-    "metadata": {}
-}
 
         response = requests.post(
             "https://api.cal.com/v2/bookings",
@@ -440,20 +444,35 @@ def book_interview():
             timeout=20
         )
 
-        print(response.status_code)
-        print(response.text)
-        
+        print("\n========== BOOKING DEBUG ==========")
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
+        print("====================================\n")
 
         booking_data = response.json()
 
+        meeting_link = ""
+
+        try:
+            meeting_link = booking_data["data"]["videoCallUrl"]
+        except:
+            pass
+
+        # ✅ Proper success check based on actual Cal.com response
+        success = (
+            response.status_code in [200, 201]
+            and booking_data.get("status") == "success"
+        )
+
         return jsonify({
-             "success": response.status_code in [200, 201],
+            "success": success,
+            "message":
+                f"Interview successfully scheduled for {slot}."
+                if success
+                else "Interview booking failed.",
+            "meeting_link": meeting_link,
             "booking": booking_data
         })
-
-        
-        print("STATUS:", response.status_code)
-        print("RESPONSE:", response.text)
 
     except Exception as e:
 
@@ -534,7 +553,13 @@ Rules:
 
 4. Never invent information.
 
-5. If information is unavailable say:
+5. Speak naturally as if talking on a phone call.
+
+6. Do not mention 'context' or 'knowledge base'.
+
+7. Keep responses under 4 sentences.
+
+8. If information is unavailable say:
 
 'I don't have enough information to answer that.'
 
@@ -561,6 +586,9 @@ Question:
             "answer":
             "I'm currently unable to access my knowledge base. Please try again in a moment."
         })
+
+
+
 
 # =====================================
 # Run Server
