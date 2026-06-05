@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import axios from "axios";
 
+
+
 interface Message {
   role: "user" | "assistant";
   text: string;
@@ -90,6 +92,12 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+  fetch(`${process.env.NEXT_PUBLIC_API_URL}/`)
+    .then(() => console.log("Backend Awake"))
+    .catch(() => console.log("Backend Waking Up"));
+}, []);
+  
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
@@ -102,7 +110,10 @@ export default function Home() {
     try {
      const { data } = await axios.post(
   `${process.env.NEXT_PUBLIC_API_URL}/chat`,
-  { question: content }
+  { question: content },
+  {
+    timeout: 120000
+  }
 );
       setMessages((prev) => [...prev, {
         role: "assistant",
@@ -264,16 +275,21 @@ export default function Home() {
           ))}
 
           {loading && (
-            <div className="flex gap-2.5">
-              <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${t.avaBot}`}>PH</div>
-              <div className={`flex items-center gap-1 ${t.typing} rounded-2xl rounded-bl-sm px-4 py-3`}>
-                {[0, 150, 300].map((d) => (
-                  <span key={d} className={`w-1.5 h-1.5 rounded-full ${t.dot} inline-block animate-bounce`}
-                    style={{ animationDelay: `${d}ms` }} />
-                ))}
-              </div>
-            </div>
-          )}
+  <div className="flex gap-2.5">
+    <div className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold ${t.avaBot}`}>
+      PH
+    </div>
+
+    <div className={`${t.typing} rounded-2xl rounded-bl-sm px-4 py-3`}>
+      <p className="text-sm">
+        Connecting to AI backend...
+      </p>
+      <p className="text-xs opacity-70 mt-1">
+        First request may take up to 60 seconds.
+      </p>
+    </div>
+  </div>
+)}
           <div ref={bottomRef} />
         </div>
 
